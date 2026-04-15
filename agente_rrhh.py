@@ -7,7 +7,7 @@ import os
 # 1. CONFIGURACIÓN DE GEMINI
 # Reemplaza con tu API Key o configúrala como secreto en Streamlit Cloud
  
-genai.configure(api_key=st.secrets["AIzaSyAOppSMXHhFU7epd4ZMUfD_UXiKN9hEq9I"])
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- FUNCIONES TÉCNICAS ---
