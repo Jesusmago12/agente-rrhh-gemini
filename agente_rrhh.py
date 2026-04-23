@@ -8,7 +8,7 @@ import os
 # Reemplaza con tu API Key o configúrala como secreto en Streamlit Cloud
  
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('models/gemini-1.5-flash')
 
 # --- FUNCIONES TÉCNICAS ---
 def extraer_texto_pdf(archivo):
