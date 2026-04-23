@@ -1,16 +1,35 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai  # Esta es la nueva forma
 import pandas as pd
 import pdfplumber
 import json
 
-# 1. CONFIGURACIÓN DE SEGURIDAD (API KEY desde Secrets)
+# 1. CONFIGURACIÓN CON LA NUEVA LIBRERÍA
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    # Usamos el nombre de modelo más estable
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Inicializamos el cliente con la API Key de tus Secrets
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception as e:
     st.error(f"Error de configuración: {e}")
+
+# ... (Tus funciones de PDF siguen igual) ...
+
+# 2. DENTRO DEL BUCLE (Cuando llamas a la IA), cambia la lógica a esta:
+# (Busca donde estaba el 'model.generate_content')
+    try:
+                response = client.models.generate_content(
+                    model='gemini-1.5-flash',
+                    contents=prompt,
+                    config={'response_mime_type': 'application/json'}
+                )
+                
+                # Con la nueva librería, accedemos al texto así:
+                res_json = json.loads(response.text)
+                
+                res_json["archivo"] = archivo.name
+                res_json["original"] = texto_cv
+                resultados.append(res_json)
+    except Exception as e:
+                st.error(f"Error técnico en {archivo.name}: {str(e)}")
 
 # --- FUNCIONES DE APOYO ---
 def extraer_texto_pdf(archivo):
@@ -69,7 +88,7 @@ if st.button("🚀 Iniciar Análisis de Perfiles"):
                 """
                 
                 try:
-                    response = model.generate_content(prompt)
+                    response = model.generate_content(prompt,generation_config={"response_mime_type": "application/json"})
                     # Limpieza de respuesta para asegurar JSON válido
                     res_limpia = response.text.replace("```json", "").replace("```", "").strip()
                     res_json = json.loads(res_limpia)
