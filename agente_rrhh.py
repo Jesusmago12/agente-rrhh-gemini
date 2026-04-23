@@ -1,126 +1,119 @@
 import streamlit as st
-from google import genai  # Esta es la nueva forma
+from google import genai
 import pandas as pd
 import pdfplumber
 import json
 
-# 1. CONFIGURACIÓN CON LA NUEVA LIBRERÍA
+# --- 1. CONFIGURACIÓN INICIAL ---
+st.set_page_config(page_title="IA Recruitment Agent", layout="wide")
+
 try:
-    # Inicializamos el cliente con la API Key de tus Secrets
+    # Usamos la nueva SDK google-genai
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception as e:
-    st.error(f"Error de configuración: {e}")
+    st.error(f"Error al conectar con los secretos de Streamlit: {e}")
 
-# ... (Tus funciones de PDF siguen igual) ...
-
-# 2. DENTRO DEL BUCLE (Cuando llamas a la IA), cambia la lógica a esta:
-# (Busca donde estaba el 'model.generate_content')
-    try:
-                response = client.models.generate_content(
-                    model='gemini-1.5-flash',
-                    contents=prompt,
-                    config={'response_mime_type': 'application/json'}
-                )
-                
-                # Con la nueva librería, accedemos al texto así:
-                res_json = json.loads(response.text)
-                
-                res_json["archivo"] = archivo.name
-                res_json["original"] = texto_cv
-                resultados.append(res_json)
-    except Exception as e:
-                st.error(f"Error técnico en {archivo.name}: {str(e)}")
-
-# --- FUNCIONES DE APOYO ---
+# --- 2. FUNCIONES DE PROCESAMIENTO ---
 def extraer_texto_pdf(archivo):
     texto = ""
     try:
         with pdfplumber.open(archivo) as pdf:
             for pagina in pdf.pages:
                 extraido = pagina.extract_text()
-                if extraido: texto += extraido + " "
+                if extraido:
+                    texto += extraido + " "
     except Exception as e:
-        st.error(f"No se pudo leer el PDF {archivo.name}: {e}")
+        st.error(f"Error leyendo PDF {archivo.name}: {e}")
     return texto.strip()
 
-# --- INTERFAZ ---
-st.set_page_config(page_title="IA Recruitment Agent", layout="wide")
-st.title("🤖 Agente RRHH Potenciado por Gemini")
-st.markdown("### Selección de Perfiles y Equivalencia Profesional")
+# --- 3. INTERFAZ DE USUARIO ---
+st.title("🤖 Agente RRHH - Análisis de Perfiles")
+st.markdown("### Clasificación de CVs mediante Inteligencia Artificial")
 
 with st.sidebar:
-    st.header("📂 Carga de Currículos")
-    archivos_subidos = st.file_uploader("Subir CVs (PDF)", type="pdf", accept_multiple_files=True)
+    st.header("📂 Configuración")
+    archivos_subidos = st.file_uploader("Subir Currículos (PDF)", type="pdf", accept_multiple_files=True)
     st.divider()
-    st.info("Utilizando arquitectura Cloud para el procesamiento de lenguaje natural.")
+    st.write("Estado: **Conectado a Gemini 1.5 Flash**")
 
-job_desc = st.text_area("Describa la vacante y especialidad buscada:", 
-                        placeholder="Ej: Ingeniero de Sistemas para mantenimiento de redes...",
+job_desc = st.text_area("Describa el perfil buscado y requisitos mínimos:", 
+                        placeholder="Ej: Ingeniero de Sistemas con experiencia en Python...",
                         height=150)
 
-if st.button("🚀 Iniciar Análisis de Perfiles"):
+if st.button("🚀 Analizar Candidatos"):
     if not archivos_subidos or not job_desc:
-        st.warning("⚠️ Por favor, sube al menos un PDF y escribe la descripción del cargo.")
+        st.warning("⚠️ Sube los CVs y escribe la descripción del cargo para continuar.")
     else:
         resultados = []
-        barra_progreso = st.progress(0)
+        progreso = st.progress(0)
         
         for idx, archivo in enumerate(archivos_subidos):
             texto_cv = extraer_texto_pdf(archivo)
             
             if texto_cv:
-                # PROMPT OPTIMIZADO PARA EVITAR ERRORES DE FORMATO
+                # Prompt estructurado para respuesta JSON
                 prompt = f"""
-                Analiza este CV para la vacante: "{job_desc}".
-                CV TEXTO: {texto_cv}
+                Actúa como un experto en reclutamiento técnico.
+                Analiza el siguiente CV basándote en esta vacante: "{job_desc}"
                 
-                REGLAS:
-                1. La especialidad (Sistemas, Industrial, etc.) debe coincidir.
-                2. Si no tiene el título pero tiene +3 años de experiencia en el área, dar equivalencia.
+                CV DEL CANDIDATO:
+                {texto_cv}
                 
-                RESPONDE ÚNICAMENTE EN FORMATO JSON PURO:
+                Instrucciones:
+                1. Evalúa de 0 a 100 la compatibilidad.
+                2. Identifica años de experiencia total.
+                3. Determina si califica por título o equivalencia profesional.
+                
+                Responde estrictamente en este formato JSON:
                 {{
-                    "score": (0-100),
-                    "años_exp": (número),
-                    "validacion": "Título Validado" o "Equivalencia" o "No califica",
-                    "razon": "breve explicacion"
+                    "score": int,
+                    "años_exp": int,
+                    "validacion": "string",
+                    "razon": "string"
                 }}
                 """
                 
                 try:
-                    response = model.generate_content(prompt,generation_config={"response_mime_type": "application/json"})
-                    # Limpieza de respuesta para asegurar JSON válido
-                    res_limpia = response.text.replace("```json", "").replace("```", "").strip()
-                    res_json = json.loads(res_limpia)
+                    # Llamada a la nueva SDK
+                    response = client.models.generate_content(
+                        model='gemini-1.5-flash',
+                        contents=prompt,
+                        config={
+                            'response_mime_type': 'application/json',
+                        }
+                    )
                     
-                    res_json["archivo"] = archivo.name
-                    res_json["original"] = texto_cv
-                    resultados.append(res_json)
+                    # Parsear la respuesta JSON
+                    res_data = json.loads(response.text)
+                    res_data["archivo"] = archivo.name
+                    res_data["resumen_cv"] = texto_cv[:500] # Para mostrar un extracto
+                    resultados.append(res_data)
+                    
                 except Exception as e:
-                    st.error(f"Error analizando {archivo.name}: El modelo no pudo procesar la solicitud.")
+                    st.error(f"Error técnico con {archivo.name}: {str(e)}")
             
-            barra_progreso.progress((idx + 1) / len(archivos_subidos))
+            progreso.progress((idx + 1) / len(archivos_subidos))
 
-        # --- MOSTRAR RESULTADOS PROTEGIDOS ---
+        # --- 4. VISUALIZACIÓN DE RESULTADOS ---
         if resultados:
             df = pd.DataFrame(resultados)
             
-            # Verificamos que existan los datos antes de ordenar
             if 'score' in df.columns:
                 df = df.sort_values(by="score", ascending=False)
                 
-                st.subheader("📊 Ranking de Candidatos")
+                st.subheader("📊 Ranking de Candidatos Seleccionados")
                 st.bar_chart(df.set_index('archivo')['score'])
 
                 for _, row in df.iterrows():
-                    with st.expander(f"📄 {row['archivo']} - Compatibilidad: {row['score']}%"):
-                        col1, col2 = st.columns([1, 2])
-                        col1.metric("Años Exp.", row['años_exp'])
-                        col2.info(f"**Estado:** {row['validacion']}")
-                        st.write(f"**Justificación de la IA:** {row['razon']}")
-                        st.divider()
-                        st.caption(f"Extracto: {row['original'][:400]}...")
+                    with st.expander(f"📄 {row['archivo']} - Match: {row['score']}%"):
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Puntuación", f"{row['score']}%")
+                        c2.metric("Experiencia", f"{row['años_exp']} años")
+                        c3.info(f"**Veredicto:** {row['validacion']}")
+                        
+                        st.write(f"**Análisis de la IA:** {row['razon']}")
+                        st.caption(f"**Extracto del CV:** {row['resumen_cv']}...")
             else:
-                st.error("❌ El formato de respuesta de la IA no fue el esperado. Intenta de nuevo.")
+                st.error("La IA no devolvió datos procesables. Intenta ajustar el prompt.")
         else:
-            st.error("❌ No se obtuvieron resultados. Verifica tu API Key y el estado de los servidores de Google.")
+            st.warning("No se generaron resultados. Verifica los archivos subidos.")
