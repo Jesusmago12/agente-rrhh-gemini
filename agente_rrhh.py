@@ -34,7 +34,7 @@ with st.sidebar:
     st.header("📂 Configuración")
     archivos_subidos = st.file_uploader("Subir Currículos (PDF)", type="pdf", accept_multiple_files=True)
     st.divider()
-    st.write("Estado: **Conectado a Gemini 1.5 Flash**")
+    st.write("Estado: **Conectado a Gemini 1.5 Pro**")
 
 job_desc = st.text_area("Describa el perfil buscado y requisitos mínimos:", 
                         placeholder="Ej: Ingeniero de Sistemas con experiencia en Python...",
@@ -76,7 +76,7 @@ if st.button("🚀 Analizar Candidatos"):
                 try:
                     # Llamada a la nueva SDK
                     response = client.models.generate_content(
-                        model='gemini-1.5-flash',
+                        model='gemini-1.5-pro',
                         contents=prompt,
                         config={
                             'response_mime_type': 'application/json',
@@ -94,10 +94,11 @@ if st.button("🚀 Analizar Candidatos"):
             
             progreso.progress((idx + 1) / len(archivos_subidos))
 
-        # --- 4. VISUALIZACIÓN DE RESULTADOS ---
+        # --- 4. VISUALIZACIÓN DE RESULTADOS PROTEGIDA ---
         if resultados:
             df = pd.DataFrame(resultados)
             
+            # Verificamos que la IA realmente devolvió la columna 'score'
             if 'score' in df.columns:
                 df = df.sort_values(by="score", ascending=False)
                 
@@ -105,15 +106,14 @@ if st.button("🚀 Analizar Candidatos"):
                 st.bar_chart(df.set_index('archivo')['score'])
 
                 for _, row in df.iterrows():
-                    with st.expander(f"📄 {row['archivo']} - Match: {row['score']}%"):
+                    with st.expander(f"📄 {row['archivo']} - Match: {row.get('score', 0)}%"):
                         c1, c2, c3 = st.columns(3)
-                        c1.metric("Puntuación", f"{row['score']}%")
-                        c2.metric("Experiencia", f"{row['años_exp']} años")
-                        c3.info(f"**Veredicto:** {row['validacion']}")
+                        c1.metric("Puntuación", f"{row.get('score', 0)}%")
+                        c2.metric("Experiencia", f"{row.get('años_exp', 0)} años")
+                        c3.info(f"**Veredicto:** {row.get('validacion', 'N/A')}")
                         
-                        st.write(f"**Análisis de la IA:** {row['razon']}")
-                        st.caption(f"**Extracto del CV:** {row['resumen_cv']}...")
+                        st.write(f"**Análisis de la IA:** {row.get('razon', 'No se pudo generar análisis.')}")
             else:
-                st.error("La IA no devolvió datos procesables. Intenta ajustar el prompt.")
+                st.error("❌ La IA no devolvió el formato esperado. Intenta simplificar la descripción de la vacante.")
         else:
-            st.warning("No se generaron resultados. Verifica los archivos subidos.")
+            st.warning("⚠️ No se pudieron obtener análisis. Revisa los mensajes de error arriba.")
