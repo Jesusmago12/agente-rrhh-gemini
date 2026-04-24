@@ -1,5 +1,6 @@
 import streamlit as st
 from google import genai
+from google.genai import types
 import pandas as pd
 import pdfplumber
 import json
@@ -78,9 +79,9 @@ if st.button("🚀 Analizar Candidatos"):
                     response = client.models.generate_content(
                         model='models/gemini-1.5-flash',
                         contents=prompt,
-                        config={
-                            'response_mime_type': 'application/json',
-                        }
+                        config=types.GenerateContentConfig(
+                           response_mime_type='application/json',
+                        )
                     )
                     
                     # Parsear la respuesta JSON
