@@ -80,7 +80,9 @@ if st.button("🚀 Analizar Candidatos"):
                         model='gemini-1.5-flash-latest',
                         contents=prompt,
                         config={
+                            'generation_config': {
                            'response_mime_type': 'application/json'
+                        }
                         }
                     )
                     print(response.text)
