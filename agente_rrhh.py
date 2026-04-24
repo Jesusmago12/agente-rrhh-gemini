@@ -85,8 +85,8 @@ if st.button("🚀 Analizar Candidatos"):
                     res_data = json.loads(raw_text)
                     #4 inyectar metadatos
                     res_data["archivo"] = archivo.name
-                    res_data["resumen_cv"] = texto_cv[:500] # Para mostrar un extracto
                     resultados.append(res_data)
+
                 except json.JSONDecodeError:
                   st.error(f"La IA no generó un JSON válido para {archivo.name}")
                 except Exception as e:
