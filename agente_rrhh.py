@@ -77,7 +77,7 @@ if st.button("🚀 Analizar Candidatos"):
                 try:
                     # Llamada a la nueva SDK
                     response = client.models.generate_content(
-                        model='gemini-1.5-flash-latest',
+                        model='gemini-1.5-flash',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             response_mime_type='application/json',
@@ -89,7 +89,8 @@ if st.button("🚀 Analizar Candidatos"):
                     res_data["archivo"] = archivo.name
                     res_data["resumen_cv"] = texto_cv[:500] # Para mostrar un extracto
                     resultados.append(res_data)
-                    
+                except json.JSONDecodeError:
+                  st.error(f"La IA no generó un JSON válido para {archivo.name}")
                 except Exception as e:
                     st.error(f"Error técnico con {archivo.name}: {str(e)}")
             
