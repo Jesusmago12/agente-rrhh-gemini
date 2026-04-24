@@ -60,32 +60,30 @@ if st.button("🚀 Analizar Candidatos"):
                 CV DEL CANDIDATO:
                 {texto_cv}
                 
-                Instrucciones:
-                1. Evalúa de 0 a 100 la compatibilidad.
-                2. Identifica años de experiencia total.
-                3. Determina si califica por título o equivalencia profesional.
-                
-                Responde estrictamente en este formato JSON:
-                {{
-                    "score": int,
-                    "años_exp": int,
-                    "validacion": "string",
-                    "razon": "string"
+                INSTRUCCIÓN CRÍTICA:
+                Responde ÚNICAMENTE con un objeto JSON válido. 
+                No incluyas introducciones, ni conclusiones, ni bloques de código markdown.
+                Esquema requerido:
+                 {{
+                 "score": int,
+                 "años_exp": int,
+                 "validacion": "string",
+                  "razon": "string"
                 }}
                 """
                 
                 try:
-                    # Llamada a la nueva SDK
+                    # 1. Llamada simplificada (Bypass de errores de config)
                     response = client.models.generate_content(
-                        model='gemini-1.5-flash',
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type='application/json',
-                          )
+                        model='gemini-1.5-flash', 
+                        contents=prompt
                     )
-                    print(response.text)
-                    # Parsear la respuesta JSON
-                    res_data = json.loads(response.text)
+                    # 2. Limpieza manual de Markdown (por si la IA añade ```json)
+                    raw_text = response.text.replace('```json', '').replace('```', '').strip()
+                    
+                    # 3. Parsear la respuesta
+                    res_data = json.loads(raw_text)
+                    #4 inyectar metadatos
                     res_data["archivo"] = archivo.name
                     res_data["resumen_cv"] = texto_cv[:500] # Para mostrar un extracto
                     resultados.append(res_data)
