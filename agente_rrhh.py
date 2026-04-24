@@ -9,7 +9,7 @@ st.set_page_config(page_title="IA Recruitment Agent", layout="wide")
 
 try:
     # Usamos la nueva SDK google-genai
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"], http_options={'api_version': 'v1'})
 except Exception as e:
     st.error(f"Error al conectar con los secretos de Streamlit: {e}")
 
