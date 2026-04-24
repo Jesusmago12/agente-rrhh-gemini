@@ -79,11 +79,9 @@ if st.button("🚀 Analizar Candidatos"):
                     response = client.models.generate_content(
                         model='gemini-1.5-flash-latest',
                         contents=prompt,
-                        config={
-                            'generation_config': {
-                           'response_mime_type': 'application/json'
-                        }
-                        }
+                        config=types.GenerateContentConfig(
+                            response_mime_type='application/json',
+                          )
                     )
                     print(response.text)
                     # Parsear la respuesta JSON
