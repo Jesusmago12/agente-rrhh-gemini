@@ -34,7 +34,7 @@ with st.sidebar:
     st.header("📂 Configuración")
     archivos_subidos = st.file_uploader("Subir Currículos (PDF)", type="pdf", accept_multiple_files=True)
     st.divider()
-    st.write("Estado: **Conectado a Gemini 1.5 Pro**")
+    st.write("Estado: **Conectado a Gemini Pro**")
 
 job_desc = st.text_area("Describa el perfil buscado y requisitos mínimos:", 
                         placeholder="Ej: Ingeniero de Sistemas con experiencia en Python...",
@@ -76,7 +76,7 @@ if st.button("🚀 Analizar Candidatos"):
                 try:
                     # Llamada a la nueva SDK
                     response = client.models.generate_content(
-                        model='gemini-1.5-8b',
+                        model='gemini-pro',
                         contents=prompt,
                         config={
                             'response_mime_type': 'application/json',
