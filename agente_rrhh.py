@@ -76,7 +76,7 @@ if st.button("🚀 Analizar Candidatos"):
                 try:
                     # Llamada a la nueva SDK
                     response = client.models.generate_content(
-                        model='gemini-pro',
+                        model='text-bison-001',
                         contents=prompt,
                         config={
                             'response_mime_type': 'application/json',
