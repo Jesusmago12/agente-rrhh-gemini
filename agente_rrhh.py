@@ -83,7 +83,7 @@ if st.button("🚀 Analizar Candidatos"):
                            response_mime_type='application/json',
                         )
                     )
-                    
+                    print(response.text)
                     # Parsear la respuesta JSON
                     res_data = json.loads(response.text)
                     res_data["archivo"] = archivo.name
