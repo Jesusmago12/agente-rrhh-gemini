@@ -10,7 +10,7 @@ st.set_page_config(page_title="IA Recruitment Agent", layout="wide")
 
 try:
     # Usamos la nueva SDK google-genai
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"],http_options={'api_version': 'v1'})
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"], http_options={'api_version': 'v1'})
 except Exception as e:
     st.error(f"Error al conectar con los secretos de Streamlit: {e}")
 
@@ -77,7 +77,7 @@ if st.button("🚀 Analizar Candidatos"):
                 try:
                     # Llamada a la nueva SDK
                     response = client.models.generate_content(
-                        model='models/gemini-1.5-flash',
+                        model='models/gemini-1.5-flash-lastest',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                            response_mime_type='application/json',
