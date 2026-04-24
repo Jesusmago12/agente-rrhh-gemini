@@ -77,7 +77,7 @@ if st.button("🚀 Analizar Candidatos"):
                 try:
                     # Llamada a la nueva SDK
                     response = client.models.generate_content(
-                        model='models/gemini-1.5-flash-lastest',
+                        model='gemini-1.5-flash-latest',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                            response_mime_type='application/json',
