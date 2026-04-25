@@ -330,7 +330,7 @@ def guardar_candidato_supabase(
     supabase: SupabaseClient, registro: dict[str, Any]
 ) -> tuple[bool, str | None]:
     try:
-        supabase.table("resultado_candidatos").insert(registro).execute()
+        supabase.table("resultados_candidatos").insert(registro).execute()
         return True, None
     except Exception as e:
         msg = str(e)
