@@ -14,6 +14,8 @@ import pandas as pd
 import pdfplumber
 import streamlit as st
 from google import genai
+from supabase import Client as SupabaseClient
+from supabase import create_client
 
 try:
     from google.genai import errors as genai_errors
@@ -251,6 +253,11 @@ def crear_cliente_gemini(api_key: str) -> genai.Client:
     return genai.Client(api_key=api_key)
 
 
+@st.cache_resource
+def crear_cliente_supabase(url: str, key: str) -> SupabaseClient:
+    return create_client(url, key)
+
+
 def obtener_cliente() -> genai.Client | None:
     try:
         key = st.secrets["GEMINI_API_KEY"]
@@ -261,7 +268,45 @@ def obtener_cliente() -> genai.Client | None:
     return crear_cliente_gemini(str(key))
 
 
+def obtener_cliente_supabase() -> SupabaseClient | None:
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+    except Exception:
+        return None
+    if not url or not key:
+        return None
+    return crear_cliente_supabase(str(url), str(key))
+
+
+def construir_registro_candidato(nombre_archivo: str, datos: dict[str, Any]) -> dict[str, Any]:
+    analisis = {
+        "años_exp": datos.get("años_exp", 0),
+        "match_habilidades": datos.get("match_habilidades", 0),
+        "validacion": datos.get("validacion", "En Observación"),
+        "razon": datos.get("razon", ""),
+    }
+    return {
+        "nombre_archivo": nombre_archivo,
+        "score": int(datos.get("match_habilidades", 0)),
+        "experiencia": float(datos.get("años_exp", 0)),
+        "validacion": str(datos.get("validacion", "En Observación")),
+        "analisis_ia": json.dumps(analisis, ensure_ascii=False),
+    }
+
+
+def guardar_candidato_supabase(
+    supabase: SupabaseClient, registro: dict[str, Any]
+) -> tuple[bool, str | None]:
+    try:
+        supabase.table("candidatos").insert(registro).execute()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
 client = obtener_cliente()
+supabase_client = obtener_cliente_supabase()
 if client is None:
     st.error(
         "No se encontró `GEMINI_API_KEY` en los secretos de Streamlit. "
@@ -298,6 +343,13 @@ with st.sidebar:
         st.success("API Gemini configurada.")
     else:
         st.warning("Sin cliente Gemini hasta configurar secretos.")
+    if supabase_client:
+        st.success("Supabase configurado.")
+    else:
+        st.warning(
+            "Sin cliente Supabase (`SUPABASE_URL` y `SUPABASE_KEY`). "
+            "Se mostrará el análisis, pero no se guardará en base de datos."
+        )
 
 job_desc = st.text_area(
     "Descripción de la vacante y requisitos mínimos",
@@ -377,6 +429,15 @@ if analizar:
                 resultados.append(datos)
                 if modelo_usado:
                     st.session_state.modelo_info_rrhh.add(modelo_usado)
+                if supabase_client is not None:
+                    registro = construir_registro_candidato(nombre, datos)
+                    ok_db, err_db = guardar_candidato_supabase(
+                        supabase_client, registro
+                    )
+                    if not ok_db and err_db:
+                        st.session_state.log_errores_rrhh.append(
+                            f"«{nombre}»: error al guardar en Supabase ({err_db})"
+                        )
             else:
                 st.session_state.log_errores_rrhh.append(f"«{nombre}»: {err_ia}")
 
