@@ -9,6 +9,7 @@ import io
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import pandas as pd
 import pdfplumber
@@ -258,6 +259,26 @@ def crear_cliente_supabase(url: str, key: str) -> SupabaseClient:
     return create_client(url, key)
 
 
+def normalizar_supabase_url(url_raw: str) -> str:
+    """
+    Supabase requiere URL base del proyecto, p. ej.:
+    https://<project-ref>.supabase.co
+    Si en secretos llega una URL con /rest/v1, /auth/v1, etc., se limpia.
+    """
+    url = (url_raw or "").strip().strip('"').strip("'")
+    if not url:
+        return ""
+    if not re.match(r"^https?://", url, flags=re.IGNORECASE):
+        url = f"https://{url}"
+
+    parsed = urlparse(url)
+    path = (parsed.path or "").strip()
+    path = re.sub(r"/+$", "", path)
+    path = re.sub(r"(?i)/(rest|auth|storage|functions)/v1$", "", path)
+    normalizada = urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+    return normalizada.rstrip("/")
+
+
 def obtener_cliente() -> genai.Client | None:
     try:
         key = st.secrets["GEMINI_API_KEY"]
@@ -276,7 +297,14 @@ def obtener_cliente_supabase() -> SupabaseClient | None:
         return None
     if not url or not key:
         return None
-    return crear_cliente_supabase(str(url), str(key))
+    url_limpia = normalizar_supabase_url(str(url))
+    key_limpia = str(key).strip().strip('"').strip("'")
+    if not url_limpia or not key_limpia:
+        return None
+    try:
+        return crear_cliente_supabase(url_limpia, key_limpia)
+    except Exception:
+        return None
 
 
 def construir_registro_candidato(nombre_archivo: str, datos: dict[str, Any]) -> dict[str, Any]:
@@ -302,7 +330,13 @@ def guardar_candidato_supabase(
         supabase.table("candidatos").insert(registro).execute()
         return True, None
     except Exception as e:
-        return False, str(e)
+        msg = str(e)
+        if "PGRST125" in msg or "Invalid path specified in request URL" in msg:
+            msg = (
+                f"{msg}. Verifica que `SUPABASE_URL` sea la URL base del proyecto "
+                "(ej. https://<project-ref>.supabase.co), no una ruta `/rest/v1`."
+            )
+        return False, msg
 
 
 client = obtener_cliente()
