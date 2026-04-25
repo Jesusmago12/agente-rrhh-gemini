@@ -24,11 +24,26 @@ except ImportError:  # compatibilidad con versiones antiguas del SDK
 ORG_NOMBRE = "PDVSA — Recursos Humanos, Gerencia/Área Cumaná, Estado Sucre"
 MAX_CV_CHARS = 55_000
 
-# Prioridad: baja latencia / buena disponibilidad (requisito despliegues con red limitada)
-MODELOS_GEMINI: tuple[str, ...] = (
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
+# IDs que expone hoy la Gemini API (v1beta). Los antiguos gemini-1.5-flash / -8b suelen dar 404.
+# Orden: rápido y amplia compatibilidad → modelo estable más reciente.
+# Opcional en secrets.toml / Streamlit Cloud: GEMINI_MODEL_FALLBACK = "modelo1,modelo2"
+DEFAULT_MODELOS_GEMINI: tuple[str, ...] = (
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
 )
+
+
+def modelos_gemini_config() -> tuple[str, ...]:
+    """Lista de modelos a probar; se puede anular con el secreto GEMINI_MODEL_FALLBACK (coma-separado)."""
+    try:
+        override = st.secrets.get("GEMINI_MODEL_FALLBACK")
+        if isinstance(override, str) and override.strip():
+            t = tuple(m.strip() for m in override.split(",") if m.strip())
+            if t:
+                return t
+    except Exception:
+        pass
+    return DEFAULT_MODELOS_GEMINI
 
 VALIDACIONES_PERMITIDAS = frozenset({"Apto", "No Apto", "En Observación"})
 
@@ -155,14 +170,17 @@ Ejemplo de forma (no copies valores):
 
 
 def evaluar_cv_con_modelos(
-    client: genai.Client, prompt: str
+    client: genai.Client,
+    prompt: str,
+    model_ids: tuple[str, ...] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     """
     Intenta modelos en orden. Ante fallo (404 modelo, 400, red, etc.) prueba el siguiente.
     Devuelve (datos_normalizados, mensaje_error, modelo_usado).
     """
+    ids = model_ids if model_ids else modelos_gemini_config()
     fallos: list[str] = []
-    for model_id in MODELOS_GEMINI:
+    for model_id in ids:
         try:
             response = client.models.generate_content(model=model_id, contents=prompt)
             raw = (response.text or "").strip()
@@ -238,8 +256,13 @@ with st.sidebar:
     )
     st.divider()
     st.markdown("**Modelos (orden de intento)**")
-    for m in MODELOS_GEMINI:
+    for m in modelos_gemini_config():
         st.markdown(f"- `{m}`")
+    st.caption(
+        "Si aparece **404 model not found**, el nombre ya no está disponible en tu clave/API: "
+        "actualiza el código o define `GEMINI_MODEL_FALLBACK` en secretos (lista separada por comas). "
+        "Lista oficial: [Modelos Gemini](https://ai.google.dev/gemini-api/docs/models)."
+    )
     st.divider()
     if client:
         st.success("API Gemini configurada.")
@@ -293,6 +316,7 @@ if analizar:
         st.session_state.log_errores_rrhh = []
         st.session_state.modelo_info_rrhh = set()
         resultados: list[dict[str, Any]] = []
+        modelos_lote = modelos_gemini_config()
         progreso = st.progress(0, text="Iniciando…")
         total = len(archivos_subidos)
 
@@ -314,7 +338,9 @@ if analizar:
                 continue
 
             prompt = construir_prompt(job_desc.strip(), truncar_cv(texto_cv))
-            datos, err_ia, modelo_usado = evaluar_cv_con_modelos(client, prompt)
+            datos, err_ia, modelo_usado = evaluar_cv_con_modelos(
+                client, prompt, modelos_lote
+            )
 
             if datos is not None:
                 datos["archivo"] = nombre
