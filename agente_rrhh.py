@@ -307,7 +307,9 @@ def obtener_cliente_supabase() -> SupabaseClient | None:
         return None
 
 
-def construir_registro_candidato(nombre_archivo: str, datos: dict[str, Any]) -> dict[str, Any]:
+def construir_registro_candidato(
+    nombre_archivo: str, prompt_busqueda: str, datos: dict[str, Any]
+) -> dict[str, Any]:
     analisis = {
         "años_exp": datos.get("años_exp", 0),
         "match_habilidades": datos.get("match_habilidades", 0),
@@ -316,6 +318,7 @@ def construir_registro_candidato(nombre_archivo: str, datos: dict[str, Any]) -> 
     }
     return {
         "nombre_archivo": nombre_archivo,
+        "prompt_busqueda": prompt_busqueda,
         "score": int(datos.get("match_habilidades", 0)),
         "experiencia": float(datos.get("años_exp", 0)),
         "validacion": str(datos.get("validacion", "En Observación")),
@@ -327,7 +330,7 @@ def guardar_candidato_supabase(
     supabase: SupabaseClient, registro: dict[str, Any]
 ) -> tuple[bool, str | None]:
     try:
-        supabase.table("candidatos").insert(registro).execute()
+        supabase.table("resultado_candidatos").insert(registro).execute()
         return True, None
     except Exception as e:
         msg = str(e)
@@ -464,7 +467,9 @@ if analizar:
                 if modelo_usado:
                     st.session_state.modelo_info_rrhh.add(modelo_usado)
                 if supabase_client is not None:
-                    registro = construir_registro_candidato(nombre, datos)
+                    registro = construir_registro_candidato(
+                        nombre, job_desc.strip(), datos
+                    )
                     ok_db, err_db = guardar_candidato_supabase(
                         supabase_client, registro
                     )
