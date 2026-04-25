@@ -25,11 +25,17 @@ ORG_NOMBRE = "PDVSA — Recursos Humanos, Gerencia/Área Cumaná, Estado Sucre"
 MAX_CV_CHARS = 55_000
 
 # IDs que expone hoy la Gemini API (v1beta). Los antiguos gemini-1.5-flash / -8b suelen dar 404.
-# Orden: rápido y amplia compatibilidad → modelo estable más reciente.
-# Opcional en secrets.toml / Streamlit Cloud: GEMINI_MODEL_FALLBACK = "modelo1,modelo2"
+# Orden: 2.5 Flash (principal) → 3 Flash si 2.5 falla (p. ej. 429 cuota/rate limit) → 2.0 Flash.
+# El ID de Gemini 3 puede variar; si da 404, ajusta GEMINI_MODEL_FALLBACK en secretos.
+# Opcional: GEMINI_MODEL_FALLBACK = "modelo1,modelo2"
+MODELO_GEMINI_25_FLASH = "gemini-2.5-flash"
+MODELO_GEMINI_3_FLASH = "gemini-3-flash-preview"
+MODELO_GEMINI_20_FLASH = "gemini-2.0-flash"
+
 DEFAULT_MODELOS_GEMINI: tuple[str, ...] = (
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
+    MODELO_GEMINI_25_FLASH,
+    MODELO_GEMINI_3_FLASH,
+    MODELO_GEMINI_20_FLASH,
 )
 
 
@@ -176,28 +182,51 @@ def evaluar_cv_con_modelos(
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     """
     Intenta modelos en orden. Ante fallo (404 modelo, 400, red, etc.) prueba el siguiente.
-    Devuelve (datos_normalizados, mensaje_error, modelo_usado).
+
+    Gemini 3 Flash (`MODELO_GEMINI_3_FLASH`) solo se usa cuando el intento previo a
+    `gemini-2.5-flash` falla con error HTTP **429** (cuota / rate limit). En cualquier otro
+    fallo de 2.5-flash se omite G3 y se pasa a gemini-2.0-flash.
     """
     ids = model_ids if model_ids else modelos_gemini_config()
     fallos: list[str] = []
+    # Tras fallo de 2.5-flash que no sea 429, no gastar cuota en G3 (comportamiento pedido).
+    omitir_gemini_3_flash = False
+
     for model_id in ids:
+        if model_id == MODELO_GEMINI_3_FLASH and omitir_gemini_3_flash:
+            fallos.append(
+                f"{model_id}: omitido (solo se invoca si «{MODELO_GEMINI_25_FLASH}» devuelve **429**)."
+            )
+            continue
+
         try:
             response = client.models.generate_content(model=model_id, contents=prompt)
             raw = (response.text or "").strip()
             if not raw:
                 fallos.append(f"{model_id}: respuesta vacía de la API")
+                if model_id == MODELO_GEMINI_25_FLASH:
+                    omitir_gemini_3_flash = True
                 continue
             data = parsear_json_ia(raw)
             normalizado = normalizar_resultado(data)
             return normalizado, None, model_id
         except json.JSONDecodeError as e:
             fallos.append(f"{model_id}: JSON inválido ({e})")
+            if model_id == MODELO_GEMINI_25_FLASH:
+                omitir_gemini_3_flash = True
+            else:
+                omitir_gemini_3_flash = False
             continue
         except Exception as e:
             code, msg = _resolver_codigo_error(e)
             etiqueta = "APIError" if _es_api_error(e) else type(e).__name__
             fallos.append(f"{model_id} [{etiqueta} {code or '?'}]: {msg}")
-            # Continuar con el siguiente modelo (resiliencia 404/400 u otros)
+            if model_id == MODELO_GEMINI_25_FLASH:
+                omitir_gemini_3_flash = not (
+                    _es_api_error(e) and code == 429
+                )
+            else:
+                omitir_gemini_3_flash = False
             continue
     return None, " | ".join(fallos) if fallos else "Error desconocido al contactar modelos.", None
 
@@ -259,9 +288,10 @@ with st.sidebar:
     for m in modelos_gemini_config():
         st.markdown(f"- `{m}`")
     st.caption(
-        "Si aparece **404 model not found**, el nombre ya no está disponible en tu clave/API: "
-        "actualiza el código o define `GEMINI_MODEL_FALLBACK` en secretos (lista separada por comas). "
-        "Lista oficial: [Modelos Gemini](https://ai.google.dev/gemini-api/docs/models)."
+        "**gemini-3-flash-preview** solo se usa si **gemini-2.5-flash** falla con **429** (cuota). "
+        "En otros errores de 2.5 se pasa directo a **gemini-2.0-flash**. "
+        "Si ves **404**, cambia el ID en código o en `GEMINI_MODEL_FALLBACK`. "
+        "[Modelos Gemini](https://ai.google.dev/gemini-api/docs/models)."
     )
     st.divider()
     if client:
