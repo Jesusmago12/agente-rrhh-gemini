@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import json
 import re
+from uuid import uuid4
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -94,6 +95,21 @@ def extraer_texto_pdf(archivo) -> tuple[str, str | None]:
         if hasattr(archivo, "seek"):
             archivo.seek(0)
         raw = archivo.read()
+        partes: list[str] = []
+        with pdfplumber.open(io.BytesIO(raw)) as pdf:
+            for pagina in pdf.pages:
+                extraido = pagina.extract_text()
+                if extraido:
+                    partes.append(extraido)
+        texto = " ".join(partes).strip()
+        return texto, None
+    except Exception as e:
+        return "", f"No se pudo leer el PDF «{nombre}»: {e}"
+
+
+def extraer_texto_pdf_desde_bytes(raw: bytes, nombre: str) -> tuple[str, str | None]:
+    """Extrae texto de un PDF en bytes para reutilizar lectura en otras operaciones."""
+    try:
         partes: list[str] = []
         with pdfplumber.open(io.BytesIO(raw)) as pdf:
             for pagina in pdf.pages:
@@ -308,7 +324,10 @@ def obtener_cliente_supabase() -> SupabaseClient | None:
 
 
 def construir_registro_candidato(
-    nombre_archivo: str, prompt_busqueda: str, datos: dict[str, Any]
+    nombre_archivo: str,
+    prompt_busqueda: str,
+    datos: dict[str, Any],
+    url_curriculo_pdf: str | None = None,
 ) -> dict[str, Any]:
     analisis = {
         "años_exp": datos.get("años_exp", 0),
@@ -322,8 +341,49 @@ def construir_registro_candidato(
         "score": int(datos.get("match_habilidades", 0)),
         "experiencia": float(datos.get("años_exp", 0)),
         "validacion": str(datos.get("validacion", "En Observación")),
+        "url_curriculo_pdf": url_curriculo_pdf or "",
         "analisis_ia": json.dumps(analisis, ensure_ascii=False),
     }
+
+
+def subir_curriculo_storage_supabase(
+    supabase: SupabaseClient, nombre_archivo: str, contenido_pdf: bytes
+) -> tuple[str | None, str | None]:
+    """
+    Sube un PDF al bucket `curriculos` y retorna una URL de acceso.
+    Intenta URL firmada y usa URL pública como fallback.
+    """
+    ruta_storage = f"{uuid4().hex}_{nombre_archivo}"
+    try:
+        supabase.storage.from_("curriculos").upload(
+            ruta_storage,
+            contenido_pdf,
+            file_options={"content-type": "application/pdf", "upsert": "true"},
+        )
+        url_pdf: str | None = None
+        try:
+            signed = supabase.storage.from_("curriculos").create_signed_url(
+                ruta_storage, 60 * 60 * 24 * 365
+            )
+            if isinstance(signed, dict):
+                url_pdf = signed.get("signedURL") or signed.get("signed_url")
+        except Exception:
+            url_pdf = None
+
+        if not url_pdf:
+            public_url = supabase.storage.from_("curriculos").get_public_url(
+                ruta_storage
+            )
+            if isinstance(public_url, dict):
+                url_pdf = public_url.get("publicURL") or public_url.get("public_url")
+            elif isinstance(public_url, str):
+                url_pdf = public_url
+
+        if not url_pdf:
+            return None, "No se pudo generar URL del archivo en storage."
+        return url_pdf, None
+    except Exception as e:
+        return None, f"Error subiendo PDF a Storage (bucket `curriculos`): {e}"
 
 
 def guardar_candidato_supabase(
@@ -423,6 +483,9 @@ def mostrar_ranking(resultados: list[dict[str, Any]]) -> None:
             c1.metric("Match habilidades", f"{pct}%")
             c2.metric("Años experiencia (afín)", f"{row.get('años_exp', 0)}")
             c3.info(f"**Veredicto:** {row.get('validacion', 'N/A')}")
+            url_pdf = str(row.get("url_curriculo_pdf", "") or "").strip()
+            if url_pdf:
+                st.markdown(f"**Currículo PDF:** [Abrir archivo]({url_pdf})")
             st.markdown(f"**Razonamiento técnico:** {row.get('razon', '')}")
 
 
@@ -443,7 +506,18 @@ if analizar:
             nombre = archivo.name
             progreso.progress((idx) / max(total, 1), text=f"Procesando {nombre}…")
 
-            texto_cv, err_pdf = extraer_texto_pdf(archivo)
+            try:
+                if hasattr(archivo, "seek"):
+                    archivo.seek(0)
+                raw_pdf = archivo.read()
+            except Exception as e:
+                st.session_state.log_errores_rrhh.append(
+                    f"No se pudo leer el contenido del archivo «{nombre}»: {e}"
+                )
+                progreso.progress((idx + 1) / max(total, 1), text=f"Listo: {nombre}")
+                continue
+
+            texto_cv, err_pdf = extraer_texto_pdf_desde_bytes(raw_pdf, nombre)
             if err_pdf:
                 st.session_state.log_errores_rrhh.append(err_pdf)
                 progreso.progress((idx + 1) / max(total, 1), text=f"Listo: {nombre}")
@@ -463,12 +537,19 @@ if analizar:
 
             if datos is not None:
                 datos["archivo"] = nombre
-                resultados.append(datos)
                 if modelo_usado:
                     st.session_state.modelo_info_rrhh.add(modelo_usado)
                 if supabase_client is not None:
+                    url_pdf_storage, err_storage = subir_curriculo_storage_supabase(
+                        supabase_client, nombre, raw_pdf
+                    )
+                    if err_storage:
+                        st.session_state.log_errores_rrhh.append(
+                            f"«{nombre}»: {err_storage}"
+                        )
+                    datos["url_curriculo_pdf"] = url_pdf_storage or ""
                     registro = construir_registro_candidato(
-                        nombre, job_desc.strip(), datos
+                        nombre, job_desc.strip(), datos, url_pdf_storage
                     )
                     ok_db, err_db = guardar_candidato_supabase(
                         supabase_client, registro
@@ -477,6 +558,9 @@ if analizar:
                         st.session_state.log_errores_rrhh.append(
                             f"«{nombre}»: error al guardar en Supabase ({err_db})"
                         )
+                else:
+                    datos["url_curriculo_pdf"] = ""
+                resultados.append(datos)
             else:
                 st.session_state.log_errores_rrhh.append(f"«{nombre}»: {err_ia}")
 
