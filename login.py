@@ -4,6 +4,7 @@ import re
 from urllib.parse import urlparse, urlunparse
 
 import streamlit as st
+import streamlit.components.v1 as components
 from supabase import Client as SupabaseClient
 from supabase import create_client
 
@@ -144,7 +145,17 @@ def redireccionar_agente() -> None:
     try:
         st.switch_page("agente_rrhh.py")
     except Exception:
-        st.info("Inicio de sesión correcto. Abre `agente_rrhh.py` en Streamlit para continuar.")
+        # Fallback para entornos donde switch_page no resuelve scripts fuera de /pages.
+        components.html(
+            """
+            <script>
+            window.parent.location.href = "./agente_rrhh";
+            </script>
+            """,
+            height=0,
+        )
+        st.success("Inicio de sesión correcto. Redirigiendo al asistente...")
+        st.stop()
 
 
 def validar_registro(nombre: str, correo: str, clave: str, confirmar: str) -> str | None:
@@ -163,6 +174,10 @@ def validar_registro(nombre: str, correo: str, clave: str, confirmar: str) -> st
 
 pintar_estilo()
 supabase, err = obtener_cliente_supabase()
+
+# Si ya existe sesión válida, redirigir automáticamente.
+if st.session_state.get("auth_ok") and st.session_state.get("auth_user_id"):
+    redireccionar_agente()
 
 st.markdown("<div class='login-card'>", unsafe_allow_html=True)
 st.markdown("<div class='avatar'>👤</div>", unsafe_allow_html=True)
