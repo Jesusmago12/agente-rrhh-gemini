@@ -11,6 +11,7 @@ import re
 from uuid import uuid4
 from typing import Any
 from urllib.parse import urlparse, urlunparse
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import pdfplumber
@@ -402,6 +403,67 @@ def guardar_candidato_supabase(
         return False, msg
 
 
+def registrar_pdf_para_analisis(
+    supabase: SupabaseClient, nombre_archivo: str, url_pdf: str
+) -> tuple[bool, str | None]:
+    """Registra en BD el PDF cargado para que sea tomado en análisis posteriores."""
+    registro = {
+        "nombre_archivo": nombre_archivo,
+        "prompt_busqueda": "__PDF_CARGADO_STORAGE__",
+        "score": 0,
+        "experiencia": 0.0,
+        "validacion": "En Observación",
+        "url_pdf": url_pdf,
+        "analisis_ia": json.dumps(
+            {
+                "estado": "pendiente",
+                "detalle": "PDF cargado en bucket. Pendiente de análisis.",
+            },
+            ensure_ascii=False,
+        ),
+    }
+    return guardar_candidato_supabase(supabase, registro)
+
+
+def obtener_pdfs_desde_bd(
+    supabase: SupabaseClient,
+) -> tuple[list[dict[str, str]], str | None]:
+    """Consulta en BD las URLs de PDF disponibles para análisis."""
+    try:
+        resp = (
+            supabase.table("resultados_candidatos")
+            .select("nombre_archivo,url_pdf")
+            .neq("url_pdf", "")
+            .execute()
+        )
+        filas = getattr(resp, "data", None) or []
+        vistos: set[str] = set()
+        fuentes: list[dict[str, str]] = []
+        for fila in filas:
+            url_pdf = str((fila or {}).get("url_pdf", "")).strip()
+            if not url_pdf or url_pdf in vistos:
+                continue
+            nombre = str((fila or {}).get("nombre_archivo", "")).strip() or "curriculo.pdf"
+            fuentes.append({"nombre_archivo": nombre, "url_pdf": url_pdf})
+            vistos.add(url_pdf)
+        return fuentes, None
+    except Exception as e:
+        return [], f"No se pudieron consultar PDFs en base de datos: {e}"
+
+
+def descargar_pdf_desde_url(url_pdf: str) -> tuple[bytes | None, str | None]:
+    """Descarga bytes del PDF usando la URL guardada en base de datos."""
+    try:
+        req = Request(url_pdf, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=30) as resp:
+            contenido = resp.read()
+        if not contenido:
+            return None, "Descarga vacía."
+        return contenido, None
+    except Exception as e:
+        return None, f"No se pudo descargar el PDF desde URL: {e}"
+
+
 client = obtener_cliente()
 supabase_client = obtener_cliente_supabase()
 if client is None:
@@ -423,7 +485,12 @@ with st.sidebar:
         "Currículos (PDF)",
         type=["pdf"],
         accept_multiple_files=True,
-        help="Los archivos se procesan solo en memoria en esta sesión.",
+        help="Usa «Subir PDF» para cargarlos al bucket `curriculos` de Supabase Storage.",
+    )
+    subir_pdfs_storage = st.button(
+        "Subir PDF",
+        disabled=supabase_client is None,
+        help="Sube los PDFs seleccionados al bucket `curriculos` y registra su URL en base de datos.",
     )
     st.divider()
     st.markdown("**Modelos (orden de intento)**")
@@ -447,6 +514,48 @@ with st.sidebar:
             "Sin cliente Supabase (`SUPABASE_URL` y `SUPABASE_KEY`). "
             "Se mostrará el análisis, pero no se guardará en base de datos."
         )
+
+if subir_pdfs_storage:
+    if supabase_client is None:
+        st.error("No hay cliente Supabase disponible para subir PDFs.")
+    elif not archivos_subidos:
+        st.warning("Selecciona al menos un PDF en el cargador antes de presionar «Subir PDF».")
+    else:
+        errores_subida: list[str] = []
+        cargados_ok = 0
+        for archivo in archivos_subidos:
+            nombre = getattr(archivo, "name", "curriculo.pdf")
+            try:
+                if hasattr(archivo, "seek"):
+                    archivo.seek(0)
+                raw_pdf = archivo.read()
+            except Exception as e:
+                errores_subida.append(f"«{nombre}»: no se pudo leer el archivo ({e})")
+                continue
+
+            url_pdf_storage, err_storage = subir_curriculo_storage_supabase(
+                supabase_client, nombre, raw_pdf
+            )
+            if err_storage or not url_pdf_storage:
+                errores_subida.append(f"«{nombre}»: {err_storage or 'Error de storage'}")
+                continue
+
+            ok_reg, err_reg = registrar_pdf_para_analisis(
+                supabase_client, nombre, url_pdf_storage
+            )
+            if not ok_reg:
+                errores_subida.append(
+                    f"«{nombre}»: PDF subido, pero no se pudo registrar en BD ({err_reg})"
+                )
+                continue
+            cargados_ok += 1
+
+        if cargados_ok:
+            st.success(f"PDFs subidos y registrados: **{cargados_ok}**.")
+        if errores_subida:
+            with st.expander("Incidencias al subir PDF", expanded=True):
+                for linea in errores_subida:
+                    st.warning(linea)
 
 job_desc = st.text_area(
     "Descripción de la vacante y requisitos mínimos",
@@ -490,29 +599,38 @@ def mostrar_ranking(resultados: list[dict[str, Any]]) -> None:
 
 
 if analizar:
-    if not archivos_subidos or not (job_desc or "").strip():
-        st.warning("Sube al menos un PDF en PDF y describe la vacante.")
+    if not (job_desc or "").strip():
+        st.warning("Describe la vacante para poder evaluar los currículos.")
     elif client is None:
         st.error("No hay cliente Gemini disponible.")
+    elif supabase_client is None:
+        st.error("No hay cliente Supabase para consultar los PDFs guardados.")
     else:
         st.session_state.log_errores_rrhh = []
         st.session_state.modelo_info_rrhh = set()
         resultados: list[dict[str, Any]] = []
         modelos_lote = modelos_gemini_config()
+        fuentes_pdf, err_fuentes = obtener_pdfs_desde_bd(supabase_client)
+        if err_fuentes:
+            st.error(err_fuentes)
+            fuentes_pdf = []
+        if not fuentes_pdf:
+            st.warning(
+                "No hay URLs de currículos en base de datos. Usa «Subir PDF» para cargarlos y registrarlos."
+            )
+            st.stop()
         progreso = st.progress(0, text="Iniciando…")
-        total = len(archivos_subidos)
+        total = len(fuentes_pdf)
 
-        for idx, archivo in enumerate(archivos_subidos):
-            nombre = archivo.name
+        for idx, fuente in enumerate(fuentes_pdf):
+            nombre = fuente["nombre_archivo"]
+            url_pdf = fuente["url_pdf"]
             progreso.progress((idx) / max(total, 1), text=f"Procesando {nombre}…")
 
-            try:
-                if hasattr(archivo, "seek"):
-                    archivo.seek(0)
-                raw_pdf = archivo.read()
-            except Exception as e:
+            raw_pdf, err_descarga = descargar_pdf_desde_url(url_pdf)
+            if err_descarga or raw_pdf is None:
                 st.session_state.log_errores_rrhh.append(
-                    f"No se pudo leer el contenido del archivo «{nombre}»: {e}"
+                    f"«{nombre}»: {err_descarga or 'No se pudo descargar el PDF.'}"
                 )
                 progreso.progress((idx + 1) / max(total, 1), text=f"Listo: {nombre}")
                 continue
@@ -539,27 +657,17 @@ if analizar:
                 datos["archivo"] = nombre
                 if modelo_usado:
                     st.session_state.modelo_info_rrhh.add(modelo_usado)
-                if supabase_client is not None:
-                    url_pdf_storage, err_storage = subir_curriculo_storage_supabase(
-                        supabase_client, nombre, raw_pdf
+                datos["url_pdf"] = url_pdf
+                registro = construir_registro_candidato(
+                    nombre, job_desc.strip(), datos, url_pdf
+                )
+                ok_db, err_db = guardar_candidato_supabase(
+                    supabase_client, registro
+                )
+                if not ok_db and err_db:
+                    st.session_state.log_errores_rrhh.append(
+                        f"«{nombre}»: error al guardar en Supabase ({err_db})"
                     )
-                    if err_storage:
-                        st.session_state.log_errores_rrhh.append(
-                            f"«{nombre}»: {err_storage}"
-                        )
-                    datos["url_pdf"] = url_pdf_storage or ""
-                    registro = construir_registro_candidato(
-                        nombre, job_desc.strip(), datos, url_pdf_storage
-                    )
-                    ok_db, err_db = guardar_candidato_supabase(
-                        supabase_client, registro
-                    )
-                    if not ok_db and err_db:
-                        st.session_state.log_errores_rrhh.append(
-                            f"«{nombre}»: error al guardar en Supabase ({err_db})"
-                        )
-                else:
-                    datos["url_pdf"] = ""
                 resultados.append(datos)
             else:
                 st.session_state.log_errores_rrhh.append(f"«{nombre}»: {err_ia}")
