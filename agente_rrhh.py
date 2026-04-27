@@ -327,7 +327,7 @@ def construir_registro_candidato(
     nombre_archivo: str,
     prompt_busqueda: str,
     datos: dict[str, Any],
-    url_curriculo_pdf: str | None = None,
+    url_pdf: str | None = None,
 ) -> dict[str, Any]:
     analisis = {
         "años_exp": datos.get("años_exp", 0),
@@ -341,7 +341,7 @@ def construir_registro_candidato(
         "score": int(datos.get("match_habilidades", 0)),
         "experiencia": float(datos.get("años_exp", 0)),
         "validacion": str(datos.get("validacion", "En Observación")),
-        "url_curriculo_pdf": url_curriculo_pdf or "",
+        "url_pdf": url_pdf or "",
         "analisis_ia": json.dumps(analisis, ensure_ascii=False),
     }
 
@@ -483,7 +483,7 @@ def mostrar_ranking(resultados: list[dict[str, Any]]) -> None:
             c1.metric("Match habilidades", f"{pct}%")
             c2.metric("Años experiencia (afín)", f"{row.get('años_exp', 0)}")
             c3.info(f"**Veredicto:** {row.get('validacion', 'N/A')}")
-            url_pdf = str(row.get("url_curriculo_pdf", "") or "").strip()
+            url_pdf = str(row.get("url_pdf", "") or "").strip()
             if url_pdf:
                 st.markdown(f"**Currículo PDF:** [Abrir archivo]({url_pdf})")
             st.markdown(f"**Razonamiento técnico:** {row.get('razon', '')}")
@@ -547,7 +547,7 @@ if analizar:
                         st.session_state.log_errores_rrhh.append(
                             f"«{nombre}»: {err_storage}"
                         )
-                    datos["url_curriculo_pdf"] = url_pdf_storage or ""
+                    datos["url_pdf"] = url_pdf_storage or ""
                     registro = construir_registro_candidato(
                         nombre, job_desc.strip(), datos, url_pdf_storage
                     )
@@ -559,7 +559,7 @@ if analizar:
                             f"«{nombre}»: error al guardar en Supabase ({err_db})"
                         )
                 else:
-                    datos["url_curriculo_pdf"] = ""
+                    datos["url_pdf"] = ""
                 resultados.append(datos)
             else:
                 st.session_state.log_errores_rrhh.append(f"«{nombre}»: {err_ia}")
