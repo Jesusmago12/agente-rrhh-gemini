@@ -251,12 +251,28 @@ def evaluar_cv_con_modelos(
     return None, " | ".join(fallos) if fallos else "Error desconocido al contactar modelos.", None
 
 
+def requerir_autenticacion() -> None:
+    auth_ok = bool(st.session_state.get("auth_ok"))
+    user_id = st.session_state.get("auth_user_id")
+    if auth_ok and user_id:
+        return
+
+    st.error("Debes iniciar sesión para acceder al asistente de reclutamiento.")
+    if st.button("Ir a login"):
+        try:
+            st.switch_page("login.py")
+        except Exception:
+            st.info("Abre `login.py` para iniciar sesión.")
+    st.stop()
+
+
 # --- Streamlit ---
 st.set_page_config(
     page_title="Asistente RRHH — PDVSA Cumaná",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+requerir_autenticacion()
 
 st.title("Asistente de Reclutamiento y Selección")
 st.caption(ORG_NOMBRE)
@@ -264,6 +280,19 @@ st.markdown(
     "Análisis de currículos **PDF** frente a una vacante, ranking por **mérito técnico** y **experiencia**. "
     "Motor: **Google Gemini** (`google-genai`). Los datos **no se guardan en disco**; solo existen en esta sesión."
 )
+nombre_usuario = str(st.session_state.get("auth_nombre", "Usuario")).strip() or "Usuario"
+rol_usuario = str(st.session_state.get("auth_rol", "usuario")).strip()
+col_user, col_logout = st.columns([4, 1])
+with col_user:
+    st.caption(f"Sesión activa: **{nombre_usuario}** ({rol_usuario})")
+with col_logout:
+    if st.button("Cerrar sesión"):
+        for key in ["auth_ok", "auth_user_id", "auth_email", "auth_rol", "auth_nombre", "remember_me"]:
+            st.session_state.pop(key, None)
+        try:
+            st.switch_page("login.py")
+        except Exception:
+            st.rerun()
 
 
 @st.cache_resource
