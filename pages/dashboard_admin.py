@@ -173,9 +173,35 @@ def tarjeta_metrica(icono: str, numero: int | None, titulo: str, nota: str) -> N
     )
 
 
+def paginacion_sidebar(pagina_actual: str) -> None:
+    opciones = {
+        "Dashboard admin": "pages/dashboard_admin.py",
+        "Asistente RRHH": "pages/agente_rrhh.py",
+    }
+    etiquetas = list(opciones.keys())
+    indice = 0
+    for i, etiqueta in enumerate(etiquetas):
+        if opciones[etiqueta] == pagina_actual:
+            indice = i
+            break
+
+    with st.sidebar:
+        st.markdown("### Paginación")
+        seleccion = st.radio(
+            "Cambiar página",
+            etiquetas,
+            index=indice,
+            label_visibility="collapsed",
+        )
+        destino = opciones[seleccion]
+        if destino != pagina_actual:
+            st.switch_page(destino)
+
+
 ocultar_navegacion_streamlit()
 pintar_estilo()
 validar_admin()
+paginacion_sidebar("pages/dashboard_admin.py")
 
 nombre = str(st.session_state.get("auth_nombre", "Administrador")).strip() or "Administrador"
 rol = str(st.session_state.get("auth_rol", "admin")).strip().lower()

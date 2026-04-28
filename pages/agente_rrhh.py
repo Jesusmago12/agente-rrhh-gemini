@@ -278,6 +278,34 @@ def ocultar_navegacion_streamlit() -> None:
     )
 
 
+def paginacion_sidebar(pagina_actual: str, es_admin: bool) -> None:
+    if es_admin:
+        opciones = {
+            "Asistente RRHH": "pages/agente_rrhh.py",
+            "Dashboard admin": "pages/dashboard_admin.py",
+        }
+    else:
+        opciones = {"Asistente RRHH": "pages/agente_rrhh.py"}
+
+    etiquetas = list(opciones.keys())
+    indice = 0
+    for i, etiqueta in enumerate(etiquetas):
+        if opciones[etiqueta] == pagina_actual:
+            indice = i
+            break
+
+    st.markdown("### Paginación")
+    seleccion = st.radio(
+        "Cambiar página",
+        etiquetas,
+        index=indice,
+        label_visibility="collapsed",
+    )
+    destino = opciones[seleccion]
+    if destino != pagina_actual:
+        st.switch_page(destino)
+
+
 # --- Streamlit ---
 st.set_page_config(
     page_title="Asistente RRHH — PDVSA Cumaná",
@@ -522,6 +550,9 @@ if "modelo_info_rrhh" not in st.session_state:
     st.session_state.modelo_info_rrhh = None
 
 with st.sidebar:
+    rol_sidebar = str(st.session_state.get("auth_rol", "usuario")).strip().lower()
+    paginacion_sidebar("pages/agente_rrhh.py", rol_sidebar == "admin")
+    st.divider()
     st.header("Configuración")
     archivos_subidos = st.file_uploader(
         "Currículos (PDF)",
