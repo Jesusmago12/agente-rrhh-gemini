@@ -143,13 +143,13 @@ def guardar_sesion(perfil: dict, user: dict) -> None:
 
 def redireccionar_agente() -> None:
     try:
-        st.switch_page("agente_rrhh.py")
+        st.switch_page("pages/agente_rrhh.py")
     except Exception:
         # Fallback para entornos donde switch_page no resuelve scripts fuera de /pages.
         components.html(
             """
             <script>
-            window.parent.location.href = "./agente_rrhh";
+            window.parent.location.href = "./pages/agente_rrhh.py";
             </script>
             """,
             height=0,
