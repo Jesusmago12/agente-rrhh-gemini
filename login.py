@@ -4,7 +4,6 @@ import re
 from urllib.parse import urlparse, urlunparse
 
 import streamlit as st
-import streamlit.components.v1 as components
 from supabase import Client as SupabaseClient
 from supabase import create_client
 
@@ -145,14 +144,10 @@ def redireccionar_agente() -> None:
     try:
         st.switch_page("pages/agente_rrhh.py")
     except Exception:
-        # Fallback para entornos donde switch_page no resuelve scripts fuera de /pages.
-        components.html(
-            """
-            <script>
-            window.parent.location.href = "./pages/agente_rrhh.py";
-            </script>
-            """,
-            height=0,
+        # Fallback sin st.components.v1.html (API deprecada).
+        st.markdown(
+            '<meta http-equiv="refresh" content="0; url=./pages/agente_rrhh.py">',
+            unsafe_allow_html=True,
         )
         st.success("Inicio de sesión correcto. Redirigiendo al asistente...")
         st.stop()
