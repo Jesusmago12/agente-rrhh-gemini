@@ -210,16 +210,16 @@ def guardar_sesion(perfil: dict, user: dict) -> None:
     st.session_state["auth_nombre"] = perfil.get("nombre_completo") or user.get("email")
 
 
-def redireccionar_agente() -> None:
+def redireccionar_por_rol(rol: str) -> None:
+    destino = "pages/dashboard_admin.py" if rol == "admin" else "pages/agente_rrhh.py"
     try:
-        st.switch_page("pages/agente_rrhh.py")
+        st.switch_page(destino)
     except Exception:
-        # Fallback sin st.components.v1.html (API deprecada).
         st.markdown(
-            '<meta http-equiv="refresh" content="0; url=./pages/agente_rrhh.py">',
+            f'<meta http-equiv="refresh" content="0; url=./{destino}">',
             unsafe_allow_html=True,
         )
-        st.success("Inicio de sesión correcto. Redirigiendo al asistente...")
+        st.success("Inicio de sesión correcto. Redirigiendo...")
         st.stop()
 
 
@@ -253,7 +253,8 @@ pintar_sidebar_metricas(total_busquedas, err_busquedas)
 
 # Si ya existe sesión válida, redirigir automáticamente.
 if st.session_state.get("auth_ok") and st.session_state.get("auth_user_id"):
-    redireccionar_agente()
+    rol_activo = str(st.session_state.get("auth_rol", "usuario")).strip().lower()
+    redireccionar_por_rol(rol_activo)
 
 st.markdown("<div class='login-card'>", unsafe_allow_html=True)
 st.markdown("<div class='avatar'>👤</div>", unsafe_allow_html=True)
@@ -299,6 +300,6 @@ if entrar:
                 guardar_sesion(perfil, {"id": user.id, "email": user.email})
                 if recordar:
                     st.session_state["remember_me"] = True
-                redireccionar_agente()
+                redireccionar_por_rol(rol)
         except Exception as exc:
             st.error(f"No se pudo iniciar sesión: {exc}")
