@@ -223,20 +223,6 @@ def redireccionar_agente() -> None:
         st.stop()
 
 
-def validar_registro(nombre: str, correo: str, clave: str, confirmar: str) -> str | None:
-    if not nombre.strip():
-        return "Ingresa tu nombre completo."
-    if not correo.strip():
-        return "Ingresa un correo válido."
-    if not clave:
-        return "Ingresa una contraseña."
-    if len(clave) < 6:
-        return "La contraseña debe tener al menos 6 caracteres."
-    if clave != confirmar:
-        return "Las contraseñas no coinciden."
-    return None
-
-
 def pintar_sidebar_metricas(total_busquedas: int | None, err_busquedas: str | None) -> None:
     with st.sidebar:
         st.markdown("### Panel RRHH")
@@ -273,25 +259,14 @@ st.markdown("<div class='login-card'>", unsafe_allow_html=True)
 st.markdown("<div class='avatar'>👤</div>", unsafe_allow_html=True)
 st.markdown("<div class='title'>LOGIN</div>", unsafe_allow_html=True)
 
-modo = st.radio("Acceso", options=["Iniciar sesión", "Registrarse"], horizontal=True)
-registrar = False
-
-if modo == "Iniciar sesión":
-    correo = st.text_input("Username", placeholder="correo@empresa.com")
-    clave = st.text_input("Password", type="password", placeholder="********")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        recordar = st.checkbox("remember me", value=True)
-    with col_b:
-        st.caption("forgot password?")
-    entrar = st.button("LOGIN", type="primary")
-else:
-    nombre_reg = st.text_input("Nombre completo", placeholder="Ej. María González")
-    correo_reg = st.text_input("Correo", placeholder="correo@empresa.com")
-    clave_reg = st.text_input("Contraseña", type="password", placeholder="Mínimo 6 caracteres")
-    confirmar_reg = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña")
-    entrar = False
-    registrar = st.button("REGISTRARME", type="primary")
+correo = st.text_input("Username", placeholder="correo@empresa.com")
+clave = st.text_input("Password", type="password", placeholder="********")
+col_a, col_b = st.columns(2)
+with col_a:
+    recordar = st.checkbox("remember me", value=True)
+with col_b:
+    st.caption("forgot password?")
+entrar = st.button("LOGIN", type="primary")
 
 st.markdown(
     "<div class='hint'>Acceso para sistema de reclutamiento y selección</div>",
@@ -327,30 +302,3 @@ if entrar:
                 redireccionar_agente()
         except Exception as exc:
             st.error(f"No se pudo iniciar sesión: {exc}")
-
-if modo == "Registrarse" and registrar:
-    if supabase is None:
-        st.error("No hay conexión con Supabase.")
-    else:
-        error_validacion = validar_registro(nombre_reg, correo_reg, clave_reg, confirmar_reg)
-        if error_validacion:
-            st.warning(error_validacion)
-        else:
-            try:
-                alta = supabase.auth.sign_up(
-                    {
-                        "email": correo_reg.strip(),
-                        "password": clave_reg,
-                        "options": {"data": {"full_name": nombre_reg.strip()}},
-                    }
-                )
-                user = getattr(alta, "user", None)
-                if not user:
-                    st.error("No se pudo registrar el usuario.")
-                else:
-                    st.success(
-                        "Cuenta creada correctamente. Ya puedes iniciar sesión. "
-                        "Si la confirmación por correo está habilitada, revisa tu email."
-                    )
-            except Exception as exc:
-                st.error(f"No se pudo registrar: {exc}")
