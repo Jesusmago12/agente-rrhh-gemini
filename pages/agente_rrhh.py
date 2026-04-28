@@ -555,44 +555,44 @@ if "modelo_info_rrhh" not in st.session_state:
 rol_sidebar = str(st.session_state.get("auth_rol", "usuario")).strip().lower()
 archivos_subidos = []
 subir_pdfs_storage = False
-if rol_sidebar == "admin":
-    with st.sidebar:
-        st.header("Configuración")
-        archivos_subidos = st.file_uploader(
-            "Currículos (PDF)",
-            type=["pdf"],
-            accept_multiple_files=True,
-            help="Usa «Subir PDF» para cargarlos al bucket `curriculos` de Supabase Storage.",
-        )
-        subir_pdfs_storage = st.button(
-            "Subir PDF",
-            disabled=supabase_client is None,
-            help="Sube los PDFs seleccionados al bucket `curriculos` y registra su URL en base de datos.",
-        )
+with st.sidebar:
+    if rol_sidebar == "admin":
+        paginacion_sidebar("pages/agente_rrhh.py", True)
         st.divider()
-        st.markdown("**Modelos (orden de intento)**")
-        for m in modelos_gemini_config():
-            st.markdown(f"- `{m}`")
-        st.caption(
-            "**gemini-3-flash-preview** solo se usa si **gemini-2.5-flash** falla con **429** (cuota). "
-            "En otros errores de 2.5 se pasa directo a **gemini-2.0-flash**. "
-            "Si ves **404**, cambia el ID en código o en `GEMINI_MODEL_FALLBACK`. "
-            "[Modelos Gemini](https://ai.google.dev/gemini-api/docs/models)."
+    st.header("Configuración")
+    archivos_subidos = st.file_uploader(
+        "Currículos (PDF)",
+        type=["pdf"],
+        accept_multiple_files=True,
+        help="Usa «Subir PDF» para cargarlos al bucket `curriculos` de Supabase Storage.",
+    )
+    subir_pdfs_storage = st.button(
+        "Subir PDF",
+        disabled=supabase_client is None,
+        help="Sube los PDFs seleccionados al bucket `curriculos` y registra su URL en base de datos.",
+    )
+    st.divider()
+    st.markdown("**Modelos (orden de intento)**")
+    for m in modelos_gemini_config():
+        st.markdown(f"- `{m}`")
+    st.caption(
+        "**gemini-3-flash-preview** solo se usa si **gemini-2.5-flash** falla con **429** (cuota). "
+        "En otros errores de 2.5 se pasa directo a **gemini-2.0-flash**. "
+        "Si ves **404**, cambia el ID en código o en `GEMINI_MODEL_FALLBACK`. "
+        "[Modelos Gemini](https://ai.google.dev/gemini-api/docs/models)."
+    )
+    st.divider()
+    if client:
+        st.success("API Gemini configurada.")
+    else:
+        st.warning("Sin cliente Gemini hasta configurar secretos.")
+    if supabase_client:
+        st.success("Supabase configurado.")
+    else:
+        st.warning(
+            "Sin cliente Supabase (`SUPABASE_URL` y `SUPABASE_KEY`). "
+            "Se mostrará el análisis, pero no se guardará en base de datos."
         )
-        st.divider()
-        if client:
-            st.success("API Gemini configurada.")
-        else:
-            st.warning("Sin cliente Gemini hasta configurar secretos.")
-        if supabase_client:
-            st.success("Supabase configurado.")
-        else:
-            st.warning(
-                "Sin cliente Supabase (`SUPABASE_URL` y `SUPABASE_KEY`). "
-                "Se mostrará el análisis, pero no se guardará en base de datos."
-            )
-else:
-    ocultar_sidebar_completo()
 
 if subir_pdfs_storage:
     if supabase_client is None:
