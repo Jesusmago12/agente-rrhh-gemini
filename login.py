@@ -11,6 +11,18 @@ from supabase import create_client
 st.set_page_config(page_title="Login RRHH", layout="centered")
 
 
+def ocultar_navegacion_streamlit() -> None:
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebarNav"] {display: none;}
+        [data-testid="stSidebarNavSeparator"] {display: none;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def normalizar_supabase_url(url_raw: str) -> str:
     url = (url_raw or "").strip().strip('"').strip("'")
     if not url:
@@ -167,6 +179,7 @@ def validar_registro(nombre: str, correo: str, clave: str, confirmar: str) -> st
     return None
 
 
+ocultar_navegacion_streamlit()
 pintar_estilo()
 supabase, err = obtener_cliente_supabase()
 

@@ -266,12 +266,25 @@ def requerir_autenticacion() -> None:
     st.stop()
 
 
+def ocultar_navegacion_streamlit() -> None:
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebarNav"] {display: none;}
+        [data-testid="stSidebarNavSeparator"] {display: none;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # --- Streamlit ---
 st.set_page_config(
     page_title="Asistente RRHH — PDVSA Cumaná",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+ocultar_navegacion_streamlit()
 requerir_autenticacion()
 
 st.title("Asistente de Reclutamiento y Selección")
