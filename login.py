@@ -61,6 +61,22 @@ def obtener_cliente_supabase() -> tuple[SupabaseClient | None, str | None]:
         return None, f"No se pudo crear el cliente de Supabase: {exc}"
 
 
+def contar_busquedas_realizadas(supabase: SupabaseClient) -> tuple[int | None, str | None]:
+    try:
+        resp = (
+            supabase.table("resultados_candidatos")
+            .select("nombre_archivo", count="exact", head=True)
+            .execute()
+        )
+        count = getattr(resp, "count", None)
+        if count is None:
+            data = getattr(resp, "data", None) or []
+            count = len(data)
+        return int(count), None
+    except Exception as exc:
+        return None, f"No se pudo consultar resultados_candidatos: {exc}"
+
+
 def cargar_perfil(supabase: SupabaseClient, user_id: str) -> dict:
     try:
         resp = (
@@ -138,6 +154,48 @@ def pintar_estilo() -> None:
             color: #94a3b8;
             text-align: center;
         }
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+            border-right: 1px solid #1f2937;
+        }
+        .metric-card {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 14px;
+            padding: 18px 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+            margin-top: 8px;
+        }
+        .metric-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            background: linear-gradient(180deg, #38bdf8 0%, #0ea5e9 100%);
+            display: grid;
+            place-items: center;
+            font-size: 18px;
+        }
+        .metric-number {
+            color: #f8fafc;
+            font-size: 1.85rem;
+            line-height: 1;
+            font-weight: 800;
+        }
+        .metric-label {
+            color: #93c5fd;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+        }
+        .metric-note {
+            color: #94a3b8;
+            font-size: 0.78rem;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -179,9 +237,33 @@ def validar_registro(nombre: str, correo: str, clave: str, confirmar: str) -> st
     return None
 
 
+def pintar_sidebar_metricas(total_busquedas: int | None, err_busquedas: str | None) -> None:
+    with st.sidebar:
+        st.markdown("### Panel RRHH")
+        numero = str(total_busquedas) if total_busquedas is not None else "--"
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-icon">👥</div>
+                <div class="metric-number">{numero}</div>
+                <div class="metric-label">Búsquedas realizadas</div>
+                <div class="metric-note">Registros acumulados en resultados_candidatos</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if err_busquedas:
+            st.caption(f"No se pudo actualizar el contador: {err_busquedas}")
+
+
 ocultar_navegacion_streamlit()
 pintar_estilo()
 supabase, err = obtener_cliente_supabase()
+total_busquedas = None
+err_busquedas = None
+if supabase is not None:
+    total_busquedas, err_busquedas = contar_busquedas_realizadas(supabase)
+pintar_sidebar_metricas(total_busquedas, err_busquedas)
 
 # Si ya existe sesión válida, redirigir automáticamente.
 if st.session_state.get("auth_ok") and st.session_state.get("auth_user_id"):
