@@ -278,15 +278,7 @@ def ocultar_navegacion_streamlit() -> None:
     )
 
 
-def ocultar_sidebar_completo() -> None:
-    st.markdown(
-        """
-        <style>
-        [data-testid="stSidebar"] {display: none;}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+
 
 
 def paginacion_sidebar(pagina_actual: str, es_admin: bool) -> None:
