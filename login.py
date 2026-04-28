@@ -247,7 +247,7 @@ def pintar_sidebar_metricas(total_busquedas: int | None, err_busquedas: str | No
                 <div class="metric-icon">👥</div>
                 <div class="metric-number">{numero}</div>
                 <div class="metric-label">Búsquedas realizadas</div>
-                <div class="metric-note">Registros acumulados en resultados_candidatos</div>
+                <div class="metric-note">Registros acumulados en AIACTH S.A</div>
             </div>
             """,
             unsafe_allow_html=True,
