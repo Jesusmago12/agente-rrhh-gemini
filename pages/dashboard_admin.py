@@ -553,9 +553,10 @@ with col_1:
         "Registros acumulados en AIACTH S.A",
     )
     st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-    tarjeta_metrica(
+    total_curriculos = total_curriculos_storage-1
+    tarjeta_metrica( 
         "📄",
-        total_curriculos_storage,
+        total_curriculos,
         "Currículos cargados",
         "Total de archivos en Storage (bucket curriculos)",
     )
