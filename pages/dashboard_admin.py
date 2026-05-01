@@ -73,6 +73,60 @@ def contar_tabla(supabase: SupabaseClient, tabla: str) -> tuple[int | None, str 
         return None, f"No se pudo consultar `{tabla}`: {exc}"
 
 
+def listar_usuarios(supabase: SupabaseClient) -> tuple[list[dict[str, str]], str | None]:
+    try:
+        resp = (
+            supabase.table("perfiles")
+            .select("nombre_completo,email")
+            .order("nombre_completo", desc=False)
+            .execute()
+        )
+        filas = getattr(resp, "data", None) or []
+        usuarios: list[dict[str, str]] = []
+        for fila in filas:
+            nombre = str((fila or {}).get("nombre_completo", "")).strip()
+            email = str((fila or {}).get("email", "")).strip()
+            if nombre or email:
+                usuarios.append({"nombre_completo": nombre, "email": email})
+        return usuarios, None
+    except Exception as exc:
+        return [], f"No se pudo consultar la tabla `perfiles`: {exc}"
+
+
+def crear_usuario_perfil(
+    supabase: SupabaseClient, nombre_completo: str, email: str, rol: str
+) -> tuple[bool, str | None]:
+    try:
+        registro = {
+            "nombre_completo": nombre_completo.strip(),
+            "email": email.strip().lower(),
+            "rol": rol.strip().lower(),
+        }
+        supabase.table("perfiles").insert(registro).execute()
+        return True, None
+    except Exception as exc:
+        return False, f"No se pudo crear el usuario en `perfiles`: {exc}"
+
+
+def eliminar_usuario_perfil(
+    supabase: SupabaseClient, nombre_completo: str, email: str
+) -> tuple[bool, str | None]:
+    try:
+        resp = (
+            supabase.table("perfiles")
+            .delete()
+            .eq("nombre_completo", nombre_completo.strip())
+            .eq("email", email.strip().lower())
+            .execute()
+        )
+        filas = getattr(resp, "data", None) or []
+        if len(filas) == 0:
+            return False, "No se encontró un usuario con ese nombre y correo."
+        return True, None
+    except Exception as exc:
+        return False, f"No se pudo eliminar el usuario de `perfiles`: {exc}"
+
+
 def pintar_estilo() -> None:
     st.markdown(
         """
@@ -198,6 +252,122 @@ def paginacion_sidebar(pagina_actual: str) -> None:
             st.switch_page(destino)
 
 
+@st.dialog("Crear usuario")
+def modal_crear_usuario(supabase: SupabaseClient | None) -> None:
+    st.write("Completa los datos del usuario que se registrará.")
+    with st.form("form_crear_usuario"):
+        nombre = st.text_input("Nombre completo")
+        email = st.text_input("Email")
+        rol = st.selectbox("Rol", ["usuario", "admin"], index=0)
+        confirmar = st.form_submit_button("Crear usuario")
+
+    if confirmar:
+        if supabase is None:
+            st.error("No hay conexión con Supabase.")
+            return
+        if not nombre.strip() or not email.strip():
+            st.warning("Completa nombre y email.")
+            return
+        ok, err_msg = crear_usuario_perfil(supabase, nombre, email, rol)
+        if ok:
+            st.session_state["admin_feedback"] = (
+                "success",
+                f"Usuario creado correctamente: {nombre.strip()} ({email.strip().lower()}).",
+            )
+            st.rerun()
+        st.error(err_msg or "No se pudo crear el usuario.")
+
+
+@st.dialog("Eliminar usuario")
+def modal_eliminar_usuario() -> None:
+    st.write("Indica los datos del usuario que deseas eliminar.")
+    with st.form("form_eliminar_usuario"):
+        nombre = st.text_input("Nombre completo")
+        email = st.text_input("Email")
+        continuar = st.form_submit_button("Eliminar usuario")
+
+    if continuar:
+        if not nombre.strip() or not email.strip():
+            st.warning("Debes completar nombre y email.")
+            return
+        st.session_state["pending_delete_usuario"] = {
+            "nombre_completo": nombre.strip(),
+            "email": email.strip().lower(),
+        }
+        st.rerun()
+
+
+@st.dialog("Confirmar eliminación")
+def modal_confirmar_eliminacion(supabase: SupabaseClient | None) -> None:
+    pendiente = st.session_state.get("pending_delete_usuario")
+    if not pendiente:
+        st.info("No hay usuario pendiente por eliminar.")
+        return
+    nombre = pendiente.get("nombre_completo", "")
+    email = pendiente.get("email", "")
+    st.warning("Estas seguro que quieres eliminar este usuario?")
+    st.caption(f"Usuario: {nombre} ({email})")
+    col_ok, col_no = st.columns(2)
+    with col_ok:
+        confirmar = st.button("Si, eliminar empleado", type="primary")
+    with col_no:
+        cancelar = st.button("Cancelar")
+
+    if cancelar:
+        st.session_state["pending_delete_usuario"] = None
+        st.session_state["admin_feedback"] = ("info", "Eliminación cancelada.")
+        st.rerun()
+
+    if confirmar:
+        if supabase is None:
+            st.error("No hay conexión con Supabase.")
+            return
+        ok, err_msg = eliminar_usuario_perfil(supabase, nombre, email)
+        st.session_state["pending_delete_usuario"] = None
+        if ok:
+            st.session_state["admin_feedback"] = (
+                "success",
+                f"Usuario eliminado correctamente: {nombre} ({email}).",
+            )
+        else:
+            st.session_state["admin_feedback"] = (
+                "error",
+                err_msg or "No se pudo eliminar el usuario.",
+            )
+        st.rerun()
+
+
+def configuracion_usuarios_sidebar(supabase: SupabaseClient | None) -> None:
+    with st.sidebar:
+        st.divider()
+        st.markdown("### Configuracion de usuarios")
+        mostrar = st.button("Mostrar todos los usuarios", use_container_width=True)
+        crear = st.button("Crear usuario", use_container_width=True)
+        eliminar = st.button("Eliminar usuario", use_container_width=True)
+
+    if mostrar:
+        if supabase is None:
+            st.session_state["admin_feedback"] = ("error", "No hay conexión con Supabase.")
+            st.session_state["mostrar_usuarios_admin"] = False
+        else:
+            usuarios, err_msg = listar_usuarios(supabase)
+            if err_msg:
+                st.session_state["admin_feedback"] = ("error", err_msg)
+                st.session_state["mostrar_usuarios_admin"] = False
+            else:
+                st.session_state["usuarios_admin_lista"] = usuarios
+                st.session_state["mostrar_usuarios_admin"] = True
+
+    if crear:
+        modal_crear_usuario(supabase)
+
+    if eliminar:
+        modal_eliminar_usuario()
+
+    if st.session_state.get("pending_delete_usuario"):
+        modal_confirmar_eliminacion(supabase)
+
+
 ocultar_navegacion_streamlit()
 pintar_estilo()
 validar_admin()
@@ -207,6 +377,17 @@ nombre = str(st.session_state.get("auth_nombre", "Administrador")).strip() or "A
 rol = str(st.session_state.get("auth_rol", "admin")).strip().lower()
 
 supabase, err = obtener_cliente_supabase()
+if "mostrar_usuarios_admin" not in st.session_state:
+    st.session_state["mostrar_usuarios_admin"] = False
+if "usuarios_admin_lista" not in st.session_state:
+    st.session_state["usuarios_admin_lista"] = []
+if "pending_delete_usuario" not in st.session_state:
+    st.session_state["pending_delete_usuario"] = None
+if "admin_feedback" not in st.session_state:
+    st.session_state["admin_feedback"] = None
+
+configuracion_usuarios_sidebar(supabase)
+
 total_busquedas = None
 total_perfiles = None
 err_busquedas = None
@@ -253,6 +434,33 @@ with col_2:
         "Perfiles registrados",
         "Total de perfiles cargados en el sistema",
     )
+
+feedback = st.session_state.get("admin_feedback")
+if feedback:
+    nivel, mensaje = feedback
+    if nivel == "success":
+        st.success(mensaje)
+    elif nivel == "error":
+        st.error(mensaje)
+    else:
+        st.info(mensaje)
+    st.session_state["admin_feedback"] = None
+
+if st.session_state.get("mostrar_usuarios_admin"):
+    st.markdown("### Usuarios registrados")
+    usuarios = st.session_state.get("usuarios_admin_lista", [])
+    if not usuarios:
+        st.info("No hay usuarios para mostrar.")
+    else:
+        st.dataframe(
+            usuarios,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "nombre_completo": "Nombre",
+                "email": "Email",
+            },
+        )
 
 if err:
     st.error(err)
