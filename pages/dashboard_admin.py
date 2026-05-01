@@ -61,6 +61,24 @@ def obtener_cliente_supabase() -> tuple[SupabaseClient | None, str | None]:
         return None, f"No se pudo crear el cliente de Supabase: {exc}"
 
 
+def obtener_cliente_supabase_admin() -> SupabaseClient | None:
+    try:
+        raw_url = st.secrets["SUPABASE_URL"]
+        raw_key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY")
+    except Exception:
+        return None
+    if not raw_key:
+        return None
+    url = normalizar_supabase_url(str(raw_url))
+    key = str(raw_key).strip().strip('"').strip("'")
+    if not url or not key:
+        return None
+    try:
+        return crear_cliente_supabase(url, key)
+    except Exception:
+        return None
+
+
 def contar_tabla(supabase: SupabaseClient, tabla: str) -> tuple[int | None, str | None]:
     try:
         resp = supabase.table(tabla).select("*", count="exact", head=True).execute()
@@ -95,23 +113,63 @@ def listar_usuarios(supabase: SupabaseClient) -> tuple[list[dict[str, str]], str
 
 def crear_usuario_perfil(
     supabase: SupabaseClient,
+    supabase_admin: SupabaseClient | None,
     nombre_completo: str,
     email: str,
     rol: str,
     password: str,
 ) -> tuple[bool, str | None]:
+    email_normalizado = email.strip().lower()
+    nombre_limpio = nombre_completo.strip()
+    rol_limpio = rol.strip().lower()
+    user_id: str | None = None
+
+    metadata = {"nombre_completo": nombre_limpio, "rol": rol_limpio}
+
     try:
-        # Crea primero el usuario autenticable en Supabase Auth.
-        supabase.auth.sign_up({"email": email.strip().lower(), "password": password})
+        # Si existe service role key, usar create_user (flujo admin).
+        if supabase_admin is not None:
+            auth_resp = supabase_admin.auth.admin.create_user(
+                {
+                    "email": email_normalizado,
+                    "password": password,
+                    "email_confirm": True,
+                    "user_metadata": metadata,
+                }
+            )
+        else:
+            # Fallback con sign_up estándar.
+            auth_resp = supabase.auth.sign_up(
+                {
+                    "email": email_normalizado,
+                    "password": password,
+                    "options": {"data": metadata},
+                }
+            )
+
+        user = getattr(auth_resp, "user", None)
+        if user:
+            user_id = getattr(user, "id", None)
+        if not user_id and isinstance(auth_resp, dict):
+            user_obj = auth_resp.get("user") or {}
+            user_id = user_obj.get("id")
+    except Exception as exc:
+        return False, f"No se pudo crear el usuario en autenticación: {exc}"
+
+    try:
         registro = {
-            "nombre_completo": nombre_completo.strip(),
-            "email": email.strip().lower(),
-            "rol": rol.strip().lower(),
+            "nombre_completo": nombre_limpio,
+            "email": email_normalizado,
+            "rol": rol_limpio,
         }
-        supabase.table("perfiles").insert(registro).execute()
+        if user_id:
+            registro["id"] = user_id
+
+        # Upsert evita duplicados si ya existe perfil (por trigger o registro previo).
+        supabase.table("perfiles").upsert(registro).execute()
         return True, None
     except Exception as exc:
-        return False, f"No se pudo crear el usuario en `perfiles`: {exc}"
+        return False, f"No se pudo sincronizar el perfil en `perfiles`: {exc}"
 
 
 def eliminar_usuario_perfil(
@@ -295,7 +353,15 @@ def modal_crear_usuario(supabase: SupabaseClient | None) -> None:
         if password != password_confirm:
             st.warning("La confirmación de contraseña no coincide.")
             return
-        ok, err_msg = crear_usuario_perfil(supabase, nombre, email, rol, password)
+        supabase_admin = obtener_cliente_supabase_admin()
+        ok, err_msg = crear_usuario_perfil(
+            supabase,
+            supabase_admin,
+            nombre,
+            email,
+            rol,
+            password,
+        )
         if ok:
             refrescar_lista_si_visible(supabase)
             st.session_state["admin_feedback"] = (
