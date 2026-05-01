@@ -546,17 +546,18 @@ with col_action:
 
 col_1, col_2 = st.columns(2)
 with col_1:
-    storage_info = (
-        f"Currículos en Storage: {total_curriculos_storage}"
-        if total_curriculos_storage is not None
-        else "Currículos en Storage: --"
-    )
     tarjeta_metrica(
         "👥",
         total_busquedas,
         "Búsquedas realizadas",
         "Registros acumulados en AIACTH S.A",
-        storage_info,
+    )
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    tarjeta_metrica(
+        "📄",
+        total_curriculos_storage,
+        "Currículos cargados",
+        "Total de archivos en Storage (bucket curriculos)",
     )
 with col_2:
     tarjeta_metrica(
