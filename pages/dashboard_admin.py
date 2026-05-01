@@ -91,6 +91,25 @@ def contar_tabla(supabase: SupabaseClient, tabla: str) -> tuple[int | None, str 
         return None, f"No se pudo consultar `{tabla}`: {exc}"
 
 
+def contar_archivos_storage(
+    supabase: SupabaseClient, bucket: str = "curriculos"
+) -> tuple[int | None, str | None]:
+    try:
+        objetos = supabase.storage.from_(bucket).list("", {"limit": 1000, "offset": 0})
+        if not isinstance(objetos, list):
+            return 0, None
+
+        total = 0
+        for obj in objetos:
+            nombre = str((obj or {}).get("name", "")).strip()
+            # Ignora carpetas virtuales y entradas sin nombre.
+            if nombre and "." in nombre:
+                total += 1
+        return total, None
+    except Exception as exc:
+        return None, f"No se pudo contar archivos del bucket `{bucket}`: {exc}"
+
+
 def listar_usuarios(supabase: SupabaseClient) -> tuple[list[dict[str, str]], str | None]:
     try:
         resp = (
@@ -289,8 +308,15 @@ def validar_admin() -> None:
     st.stop()
 
 
-def tarjeta_metrica(icono: str, numero: int | None, titulo: str, nota: str) -> None:
+def tarjeta_metrica(
+    icono: str,
+    numero: int | None,
+    titulo: str,
+    nota: str,
+    detalle_extra: str | None = None,
+) -> None:
     valor = str(numero) if numero is not None else "--"
+    detalle_html = f"<div class='card-note'>{detalle_extra}</div>" if detalle_extra else ""
     st.markdown(
         f"""
         <div class="card">
@@ -298,6 +324,7 @@ def tarjeta_metrica(icono: str, numero: int | None, titulo: str, nota: str) -> N
             <div class="card-number">{valor}</div>
             <div class="card-label">{titulo}</div>
             <div class="card-note">{nota}</div>
+            {detalle_html}
         </div>
         """,
         unsafe_allow_html=True,
@@ -485,11 +512,14 @@ configuracion_usuarios_sidebar(supabase)
 
 total_busquedas = None
 total_perfiles = None
+total_curriculos_storage = None
 err_busquedas = None
 err_perfiles = None
+err_storage = None
 if supabase is not None:
     total_busquedas, err_busquedas = contar_tabla(supabase, "resultados_candidatos")
     total_perfiles, err_perfiles = contar_tabla(supabase, "perfiles")
+    total_curriculos_storage, err_storage = contar_archivos_storage(supabase, "curriculos")
 
 col_title, col_action = st.columns([4, 1])
 with col_title:
@@ -516,11 +546,17 @@ with col_action:
 
 col_1, col_2 = st.columns(2)
 with col_1:
+    storage_info = (
+        f"Currículos en Storage: {total_curriculos_storage}"
+        if total_curriculos_storage is not None
+        else "Currículos en Storage: --"
+    )
     tarjeta_metrica(
         "👥",
         total_busquedas,
         "Búsquedas realizadas",
         "Registros acumulados en AIACTH S.A",
+        storage_info,
     )
 with col_2:
     tarjeta_metrica(
@@ -563,3 +599,5 @@ if err_busquedas:
     st.warning(err_busquedas)
 if err_perfiles:
     st.warning(err_perfiles)
+if err_storage:
+    st.warning(err_storage)
