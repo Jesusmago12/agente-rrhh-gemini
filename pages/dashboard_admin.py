@@ -94,9 +94,15 @@ def listar_usuarios(supabase: SupabaseClient) -> tuple[list[dict[str, str]], str
 
 
 def crear_usuario_perfil(
-    supabase: SupabaseClient, nombre_completo: str, email: str, rol: str
+    supabase: SupabaseClient,
+    nombre_completo: str,
+    email: str,
+    rol: str,
+    password: str,
 ) -> tuple[bool, str | None]:
     try:
+        # Crea primero el usuario autenticable en Supabase Auth.
+        supabase.auth.sign_up({"email": email.strip().lower(), "password": password})
         registro = {
             "nombre_completo": nombre_completo.strip(),
             "email": email.strip().lower(),
@@ -125,6 +131,19 @@ def eliminar_usuario_perfil(
         return True, None
     except Exception as exc:
         return False, f"No se pudo eliminar el usuario de `perfiles`: {exc}"
+
+
+def refrescar_lista_si_visible(supabase: SupabaseClient | None) -> None:
+    if not st.session_state.get("mostrar_usuarios_admin"):
+        return
+    if supabase is None:
+        st.session_state["usuarios_admin_lista"] = []
+        return
+    usuarios, err_msg = listar_usuarios(supabase)
+    if err_msg:
+        st.session_state["admin_feedback"] = ("error", err_msg)
+        return
+    st.session_state["usuarios_admin_lista"] = usuarios
 
 
 def pintar_estilo() -> None:
@@ -258,6 +277,8 @@ def modal_crear_usuario(supabase: SupabaseClient | None) -> None:
     with st.form("form_crear_usuario"):
         nombre = st.text_input("Nombre completo")
         email = st.text_input("Email")
+        password = st.text_input("Contraseña", type="password")
+        password_confirm = st.text_input("Confirmar contraseña", type="password")
         rol = st.selectbox("Rol", ["usuario", "admin"], index=0)
         confirmar = st.form_submit_button("Crear usuario")
 
@@ -265,11 +286,18 @@ def modal_crear_usuario(supabase: SupabaseClient | None) -> None:
         if supabase is None:
             st.error("No hay conexión con Supabase.")
             return
-        if not nombre.strip() or not email.strip():
-            st.warning("Completa nombre y email.")
+        if not nombre.strip() or not email.strip() or not password or not password_confirm:
+            st.warning("Completa nombre, email, contraseña y confirmación.")
             return
-        ok, err_msg = crear_usuario_perfil(supabase, nombre, email, rol)
+        if len(password) < 6:
+            st.warning("La contraseña debe tener al menos 6 caracteres.")
+            return
+        if password != password_confirm:
+            st.warning("La confirmación de contraseña no coincide.")
+            return
+        ok, err_msg = crear_usuario_perfil(supabase, nombre, email, rol, password)
         if ok:
+            refrescar_lista_si_visible(supabase)
             st.session_state["admin_feedback"] = (
                 "success",
                 f"Usuario creado correctamente: {nombre.strip()} ({email.strip().lower()}).",
@@ -325,6 +353,7 @@ def modal_confirmar_eliminacion(supabase: SupabaseClient | None) -> None:
         ok, err_msg = eliminar_usuario_perfil(supabase, nombre, email)
         st.session_state["pending_delete_usuario"] = None
         if ok:
+            refrescar_lista_si_visible(supabase)
             st.session_state["admin_feedback"] = (
                 "success",
                 f"Usuario eliminado correctamente: {nombre} ({email}).",
