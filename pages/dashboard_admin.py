@@ -526,7 +526,7 @@ with col_2:
     tarjeta_metrica(
         "🧾",
         total_perfiles,
-        "Perfiles registrados",
+        "usuarios registrados",
         "Total de perfiles cargados en el sistema",
     )
 
