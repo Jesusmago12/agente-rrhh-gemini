@@ -124,7 +124,7 @@ def crear_usuario_perfil(
     rol_limpio = rol.strip().lower()
     user_id: str | None = None
 
-    metadata = {"nombre_completo": nombre_limpio, "rol": rol_limpio}
+    metadata = {"nombre_completo": nombre_limpio,"full_name": nombre_limpio, "rol": rol_limpio}
 
     try:
         # Si existe service role key, usar create_user (flujo admin).
